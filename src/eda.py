@@ -1,261 +1,144 @@
 import pandas as pd
-import numpy as np
 
-class EDAProcessor:
-    """
-    Performs comprehensive Exploratory Data Analysis (EDA) for an insurance portfolio.
+class InsuranceEDA:
+    """Text-based, comprehensive EDA for insurance datasets without visualizations."""
 
-    Attributes:
-        df (pd.DataFrame): The cleaned DataFrame to analyze.
-        financial_cols (list): List of numeric financial columns.
-        categorical_cols (list): List of categorical columns (dtype object).
-        stats (pd.DataFrame): Descriptive statistics of numeric columns.
-        categorical_freqs (dict): Frequency tables of categorical columns.
-        loss_ratios_data (dict): Overall and grouped loss ratios.
-        temporal_trends_data (pd.DataFrame): Monthly aggregated trends.
-        vehicle_claims_data (pd.Series): Average claims per vehicle make.
-        correlations_data (pd.DataFrame): Correlation matrix of numeric financial columns.
-        outliers_data (dict): Boolean masks for outlier detection.
-        bivariate_summaries_data (dict): Bivariate summaries for selected groups.
-        geographic_trends_data (dict): Aggregated metrics by geography.
-    """
-
-    def __init__(self, df):
-        """Initializes the EDAProcessor with a DataFrame.
-
-        Args:
-            df (pd.DataFrame): Cleaned insurance portfolio data.
-        """
+    def __init__(self, df: pd.DataFrame):
+        """Initialize the EDA processor."""
         self.df = df.copy()
+        self.categorical_cols = self.df.select_dtypes(include="object").columns.tolist()
+        self.numeric_cols = self.df.select_dtypes(include="number").columns.tolist()
 
-        # Remove ONLY "Unknown" and "unknown"
-        unknowns = ["Unknown", "unknown"]
-        self.categorical_cols = df.select_dtypes(include='object').columns.tolist()
-
+        # Remove 'Unknown' in categorical columns
         for col in self.categorical_cols:
-            self.df = self.df[~self.df[col].isin(unknowns)]
+            self.df = self.df[~self.df[col].isin(["Unknown", "unknown"])]
 
-        all_financial = [
-            'TotalPremium', 'TotalClaims', 'CustomValueEstimate', 
-            'SumInsured', 'CalculatedPremiumPerTerm'
-        ]
-        self.financial_cols = [col for col in all_financial if col in df.columns]
-
-        self.stats = None
-        self.categorical_freqs = None
-        self.loss_ratios_data = {}
-        self.temporal_trends_data = None
-        self.vehicle_claims_data = None
-        self.correlations_data = None
-        self.outliers_data = None
-        self.bivariate_summaries_data = {}
-        self.geographic_trends_data = {}
-
-    def descriptive_statistics(self):
-        """Computes descriptive statistics for numeric financial columns.
-
-        Returns:
-            pd.DataFrame: Table with mean, std, min, max, quartiles, and CV.
-        """
-        stats = self.df[self.financial_cols].describe().T
-        stats['CV (StdDev/Mean)'] = stats['std'] / stats['mean']
-        print("\n--- Descriptive Statistics (Numeric Features) ---")
-        print(stats)
-        self.stats = stats
+    # ----------------------------
+    # Descriptive Statistics
+    # ----------------------------
+    def numeric_summary(self) -> pd.DataFrame:
+        """Summary statistics for numeric columns with coefficient of variation (CV)."""
+        stats = self.df[self.numeric_cols].describe().T
+        stats["CV"] = stats["std"] / stats["mean"]
         return stats
 
-    def categorical_frequencies(self, top_n=10):
-        """
-        Prints top N values for all categorical columns with counts and percentages.
-
-        Args:
-            top_n (int): Number of top values to display for each categorical column.
-
-        Returns:
-            dict: Dictionary mapping column name to value counts (pd.Series).
-        """
-        freq_dict = {}
-
-        for col in self.categorical_cols:
-            if col not in self.df.columns:
-                continue
-            counts = self.df[col].value_counts(dropna=False)
-            freq_dict[col] = counts
-
-            total = counts.sum()
-            top_counts = counts.head(top_n)
-            print(f"\n--- Top {top_n} for {col} ---")
-            for value, count in top_counts.items():
-                percent = count / total * 100
-                print(value, count, f"{percent:.2f}%")
-
-        self.categorical_freqs = freq_dict
+    def categorical_summary(self, top_n: int = 10) -> dict:
+        """Top value counts for categorical columns."""
+        freq_dict = {col: self.df[col].value_counts().head(top_n) for col in self.categorical_cols}
         return freq_dict
 
+    # ----------------------------
+    # Loss Ratios
+    # ----------------------------
+    def overall_loss_ratio(self) -> float:
+        """Overall portfolio loss ratio."""
+        if "TotalClaims" in self.df.columns and "TotalPremium" in self.df.columns:
+            return self.df["TotalClaims"].sum() / self.df["TotalPremium"].sum()
+        return None
 
-    def calculate_loss_ratio(self, group_col=None):
-        """Calculates loss ratio as TotalClaims / TotalPremium.
+    def grouped_loss_ratio(self, group_col: str) -> pd.DataFrame:
+        """Loss ratio by a categorical column."""
+        if group_col in self.df.columns and "TotalClaims" in self.df.columns and "TotalPremium" in self.df.columns:
+            grouped = self.df.groupby(group_col)[["TotalClaims", "TotalPremium"]].sum()
+            grouped["LossRatio"] = grouped["TotalClaims"] / grouped["TotalPremium"]
+            return grouped.sort_values("LossRatio", ascending=False)
+        return pd.DataFrame()
 
-        Args:
-            group_col (str, optional): Column to group by. Defaults to None.
-
-        Returns:
-            pd.DataFrame or float: Overall loss ratio or grouped DataFrame with LossRatio.
-        """
-        if group_col:
-            if group_col not in self.df.columns:
-                print(f"Warning: {group_col} not in dataframe → skipping loss ratio by this group.")
-                return pd.DataFrame()
-            grouped = self.df.groupby(group_col)[['TotalClaims', 'TotalPremium']].sum()
-            grouped['LossRatio'] = grouped['TotalClaims'] / grouped['TotalPremium']
-            grouped.sort_values('LossRatio', ascending=False, inplace=True)
-            print(f"\n--- Loss Ratio by {group_col} ---")
-            print(grouped)
-            self.loss_ratios_data[group_col] = grouped
-            return grouped
-        else:
-            overall_lr = self.df['TotalClaims'].sum() / self.df['TotalPremium'].sum()
-            print(f"\n--- Overall Portfolio Loss Ratio: {overall_lr:.4f} ---")
-            self.loss_ratios_data['overall'] = overall_lr
-            return overall_lr
-
-    def analyze_temporal_trends(self):
-        """Analyzes monthly trends of premiums, claims, claim frequency, and severity.
-
-        Returns:
-            pd.DataFrame: Aggregated monthly trends.
-        """
-        if 'TransactionMonth' not in self.df.columns or not np.issubdtype(self.df['TransactionMonth'].dtype, np.datetime64):
-            print("Error: 'TransactionMonth' must be a datetime column.")
-            return pd.DataFrame()
-
-        monthly = (self.df
-                   .set_index('TransactionMonth')
-                   .resample('M')
-                   .agg({'TotalPremium':'sum', 'TotalClaims':'sum', 'PolicyID':'count'}))
-        monthly.rename(columns={'PolicyID':'PolicyCount'}, inplace=True)
-        monthly['ClaimFrequency'] = monthly['TotalClaims'] / monthly['PolicyCount']
-        monthly['ClaimSeverity'] = monthly['TotalClaims'] / monthly['TotalPremium']
-        print("\n--- Monthly Temporal Trends (First 5 Months) ---")
-        print(monthly.head())
-        self.temporal_trends_data = monthly
-        return monthly
-
-    def analyze_vehicle_claims(self):
-        """Analyzes average TotalClaims per vehicle make.
-
-        Returns:
-            pd.Series: Average TotalClaims per Make.
-        """
-        if 'Make' not in self.df.columns and 'make' in self.df.columns:
-            self.df['Make'] = self.df['make']
-
-        if 'Make' not in self.df.columns:
-            print("Warning: 'Make' column not found → skipping vehicle claims analysis.")
-            return pd.Series()
-
-        avg_claims = self.df.groupby('Make')['TotalClaims'].mean().sort_values(ascending=False).dropna()
-        print("\n--- Top 5 Vehicle Makes by Average Claims ---")
-        print(avg_claims.head(5))
-        print("\n--- Bottom 5 Vehicle Makes by Average Claims ---")
-        print(avg_claims.tail(5))
-        self.vehicle_claims_data = avg_claims
-        return avg_claims
-
-    def calculate_correlations(self):
-        """Calculates correlation matrix of numeric financial columns.
-
-        Returns:
-            pd.DataFrame: Correlation matrix.
-        """
-        if len(self.financial_cols) < 2:
-            print("Warning: Not enough financial columns to calculate correlations.")
-            return pd.DataFrame()
-
-        corr_matrix = self.df[self.financial_cols].corr()
-        print("\n--- Correlation Matrix (Financial Features) ---")
-        print(corr_matrix)
-        self.correlations_data = corr_matrix
-        return corr_matrix
-
-    def detect_outliers(self, threshold=3):
-        """Detects outliers in numeric columns using z-score.
-
-        Args:
-            threshold (float, optional): Z-score threshold to classify as outlier. Defaults to 3.
-
-        Returns:
-            dict: Boolean masks where True indicates an outlier.
-        """
+    # ----------------------------
+    # Outlier Detection
+    # ----------------------------
+    def detect_outliers(self, columns=None) -> dict:
+        """Detect outliers in numeric columns using IQR method."""
+        if columns is None:
+            columns = ["TotalClaims", "CustomValueEstimate"]
         outliers = {}
-        for col in ['TotalClaims', 'CustomValueEstimate']:
-            if col in self.df.columns and pd.api.types.is_numeric_dtype(self.df[col]):
-                mean = self.df[col].mean()
-                std = self.df[col].std()
-                z_scores = (self.df[col] - mean) / std
-                mask = z_scores.abs() > threshold
-                outliers[col] = mask
-                print(f"\n--- Outliers in {col} (z-score > {threshold}) ---")
-                print(self.df.loc[mask, [col]].head(10))
-        self.outliers_data = outliers
+        for col in columns:
+            if col in self.df.columns:
+                Q1 = self.df[col].quantile(0.25)
+                Q3 = self.df[col].quantile(0.75)
+                IQR = Q3 - Q1
+                mask = (self.df[col] < Q1 - 1.5 * IQR) | (self.df[col] > Q3 + 1.5 * IQR)
+                outliers[col] = self.df[col][mask]
         return outliers
 
-    def bivariate_group_summary(self, group_col, x_col, y_col):
-        """Aggregates x_col and y_col statistics by a grouping column.
+    # ----------------------------
+    # Temporal Trends
+    # ----------------------------
+    def monthly_trends(self) -> pd.DataFrame:
+        """Monthly aggregation of TotalPremium, TotalClaims, PolicyCount, ClaimFrequency, ClaimSeverity."""
+        if "TransactionMonth" in self.df.columns:
+            monthly = (
+                self.df.set_index("TransactionMonth")
+                .resample("M")
+                .agg({"TotalPremium": "sum", "TotalClaims": "sum", "PolicyID": "count"})
+            )
+            monthly.rename(columns={"PolicyID": "PolicyCount"}, inplace=True)
+            monthly["ClaimFrequency"] = monthly["TotalClaims"] / monthly["PolicyCount"]
+            monthly["ClaimSeverity"] = monthly["TotalClaims"] / monthly["TotalPremium"]
+            return monthly
+        return pd.DataFrame()
 
-        Args:
-            group_col (str): Column to group by.
-            x_col (str): Independent variable.
-            y_col (str): Dependent variable.
+    # ----------------------------
+    # Correlations
+    # ----------------------------
+    def correlations(self) -> pd.DataFrame:
+        """Correlation matrix for numeric columns."""
+        return self.df[self.numeric_cols].corr()
 
-        Returns:
-            pd.DataFrame: Aggregated statistics.
-        """
-        if group_col not in self.df.columns:
-            print(f"Warning: {group_col} not found → skipping bivariate summary.")
-            return pd.DataFrame()
+    def zip_code_correlations(self, zip_col="PostalCode") -> pd.DataFrame:
+        """Aggregate TotalPremium and TotalClaims by ZipCode."""
+        if zip_col in self.df.columns and "TotalPremium" in self.df.columns and "TotalClaims" in self.df.columns:
+            return self.df.groupby(zip_col)[["TotalPremium", "TotalClaims"]].sum()
+        return pd.DataFrame()
 
-        summary = self.df.groupby(group_col).agg({x_col:'mean', y_col:['mean','sum','count']})
-        print(f"\n--- Bivariate Summary: {y_col} vs {x_col} by {group_col} ---")
-        print(summary.head(10))
-        self.bivariate_summaries_data[(group_col, x_col, y_col)] = summary
-        return summary
-
-    def geographic_trends(self, group_col, metric_col):
-        """Aggregates metric_col by geographic group.
-
-        Args:
-            group_col (str): Geographic column (e.g., Province, PostalCode).
-            metric_col (str): Metric column to aggregate.
-
-        Returns:
-            pd.Series: Aggregated metric by geography.
-        """
-        if group_col not in self.df.columns:
-            print(f"Warning: {group_col} not found → skipping geographic trend.")
-            return pd.Series()
-
-        summary = self.df.groupby(group_col)[metric_col].mean().sort_values(ascending=False)
-        print(f"\n--- Geographic Trend: {metric_col} by {group_col} ---")
-        print(summary.head(10))
-        self.geographic_trends_data[(group_col, metric_col)] = summary
-        return summary
-
-    def run_eda(self):
-        """Runs all EDA steps sequentially."""
-        print("\n===== RUNNING FULL EDA PIPELINE =====")
-        self.descriptive_statistics()
-        self.categorical_frequencies()
-        self.calculate_loss_ratio()
-        for col in ['Province', 'VehicleType', 'Gender']:
+    # ----------------------------
+    # Geographic Trends
+    # ----------------------------
+    def geographic_trends(self, group_cols) -> dict:
+        """Aggregate TotalPremium, TotalClaims, and PolicyCount by geographic columns."""
+        summaries = {}
+        for col in group_cols:
             if col in self.df.columns:
-                self.calculate_loss_ratio(group_col=col)
-        self.analyze_temporal_trends()
-        self.analyze_vehicle_claims()
-        self.calculate_correlations()
-        self.detect_outliers()
-        for group_col in ['Province', 'PostalCode']:
-            if group_col in self.df.columns:
-                self.bivariate_group_summary(group_col, 'TotalPremium', 'TotalClaims')
-                self.geographic_trends(group_col, 'TotalPremium')
-        print("\n===== FULL EDA COMPLETE =====")
+                summary = self.df.groupby(col).agg({
+                    "TotalPremium": "sum",
+                    "TotalClaims": "sum",
+                    "PolicyID": "count"
+                }).rename(columns={"PolicyID": "PolicyCount"})
+                summaries[col] = summary
+        return summaries
+
+    # ----------------------------
+    # Top/Bottom Vehicle Claims
+    # ----------------------------
+    def vehicle_claims_summary(self, top_n=5) -> dict:
+        """Identify vehicle makes/models with highest and lowest average TotalClaims."""
+        results = {}
+        for col in ["make", "Model"]:
+            if col in self.df.columns:
+                avg_claims = self.df.groupby(col)["TotalClaims"].mean().sort_values()
+                results[col] = {
+                    "lowest": avg_claims.head(top_n),
+                    "highest": avg_claims.tail(top_n).sort_values(ascending=False)
+                }
+        return results
+
+    # ----------------------------
+    # Full EDA Pipeline
+    # ----------------------------
+    def run(self) -> dict:
+        """Run full EDA and return results as a dictionary."""
+        results = {
+            "numeric_summary": self.numeric_summary(),
+            "categorical_summary": self.categorical_summary(),
+            "overall_loss_ratio": self.overall_loss_ratio(),
+            "grouped_loss_ratio_province": self.grouped_loss_ratio("Province"),
+            "grouped_loss_ratio_vehicle": self.grouped_loss_ratio("VehicleType"),
+            "grouped_loss_ratio_gender": self.grouped_loss_ratio("Gender"),
+            "outliers": self.detect_outliers(),
+            "monthly_trends": self.monthly_trends(),
+            "correlations": self.correlations(),
+            "zip_code_aggregates": self.zip_code_correlations(),
+            "geographic_trends": self.geographic_trends(["Province", "CoverType", "make"]),
+            "vehicle_claims_summary": self.vehicle_claims_summary()
+        }
+        return results
