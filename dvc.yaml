@@ -1,0 +1,9 @@
+stages:
+  process:
+    cmd: python scripts/process.py
+    deps:
+      - scripts/process.py
+      - src/cleaner.py
+      - data/MachineLearningRating_v3.txt
+    outs:
+      - data/MachineLearningRating_v3_cleaned.txt
