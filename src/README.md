@@ -4,7 +4,7 @@ The `src` directory contains three main modules used for cleaning, analyzing, an
 
 ---
 
-## 1. `cleaner.py`
+## 1. `eda_preprocessing.py`
 
 ### Purpose
 - Handles the full data cleaning pipeline.
@@ -18,7 +18,7 @@ The `src` directory contains three main modules used for cleaning, analyzing, an
 - Save cleaned output
 
 ### Main Class
-- `DataCleaner`
+- `EDADataPreprocessor`
 
 ---
 
@@ -58,3 +58,63 @@ The `src` directory contains three main modules used for cleaning, analyzing, an
 
 ### Main Class
 - `InsuranceEDAVisualizer`
+
+## 4. `hypothesis_tests.py`
+
+### Purpose
+- Provides statistical hypothesis testing helpers.
+
+### Features
+- Chi-squared test for categorical variables
+
+- Two-sample t-test for numerical variables across two groups
+
+- One-way ANOVA for numerical variables across multiple groups
+
+### Main Classes
+- `HypothesisTester`
+- `HypothesisTester.TestResult` – container for test results with statistic, p-value, and null hypothesis decision
+
+
+## 5. `prep_modeling.py`
+
+### Purpose
+- Data preparation for predictive modeling..
+
+### Features
+- Feature selection
+
+- Handling missing values
+
+- Categorical encoding
+
+- Feature engineering (vehicle_age, premium_per_sum_insured)
+
+- Train-test splitting for regression and classification
+
+### Main Classes
+- `DataPrepHelper`
+
+
+## 6. `modeling.py`
+
+### Purpose
+- Training, evaluating, and analyzing predictive models for regression and classification..
+
+### Features
+- Linear Regression, Logistic Regression
+
+- Random Forest Regressor & Classifier
+
+- Optional XGBoost Regressor & Classifier
+
+- Model evaluation metrics:
+
+    - Regression: RMSE, R²
+
+    - Classification: Accuracy, Precision, Recall, F1
+
+    - Feature importance extraction for tree-based models
+
+### Main Classes
+- `ModelHelper`
