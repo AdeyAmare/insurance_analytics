@@ -1,9 +1,10 @@
 stages:
   process:
-    cmd: python scripts/process.py
+    cmd: python scripts/process.py --input data/MachineLearningRating_v3.txt --output data/MachineLearningRating_v3_final.txt --current_year 2015
     deps:
       - scripts/process.py
-      - src/cleaner.py
+      - src/eda_preprocessing.py         
+      - src/prep_modeling.py
       - data/MachineLearningRating_v3.txt
     outs:
-      - data/MachineLearningRating_v3_cleaned.txt
+      - data/MachineLearningRating_v3_final.txt

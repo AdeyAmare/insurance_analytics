@@ -1,7 +1,8 @@
 schema: '2.0'
 stages:
   process:
-    cmd: python scripts/process.py
+    cmd: python scripts/process.py --input data/MachineLearningRating_v3.txt 
+      --output data/MachineLearningRating_v3_final.txt --current_year 2015
     deps:
     - path: data/MachineLearningRating_v3.txt
       hash: md5
@@ -9,14 +10,18 @@ stages:
       size: 529363713
     - path: scripts/process.py
       hash: md5
-      md5: 2ed24a418fb8b65a290208bb292c4d64
-      size: 585
-    - path: src/cleaner.py
+      md5: 4e6a44bff3dbb1ccc5aabe65f3ab07db
+      size: 1899
+    - path: src/eda_preprocessing.py
       hash: md5
-      md5: 6302fcd53e01b78bd1fea7016b9cde69
-      size: 3866
+      md5: a638d66369bc725afc1d6779f734146a
+      size: 7512
+    - path: src/prep_modeling.py
+      hash: md5
+      md5: 220cbd58336cc1635ad569f263e0e7b8
+      size: 7259
     outs:
-    - path: data/MachineLearningRating_v3_cleaned.txt
+    - path: data/MachineLearningRating_v3_final.txt
       hash: md5
-      md5: f2145be87c9a2b22022c8168d92bc15a
-      size: 518686981
+      md5: 3449f511c2a28763f28822794484c732
+      size: 160675620
