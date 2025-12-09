@@ -18,6 +18,13 @@ try:
 except Exception:
     HAS_XGBOOST = False
 
+try:
+    import shap
+    HAS_SHAP = True
+except ImportError:
+    HAS_SHAP = False
+
+
 
 class ModelHelper:
     """
@@ -312,3 +319,129 @@ class ModelHelper:
             "importance": model.feature_importances_,
         })
         return importance_df.sort_values("importance", ascending=False)
+
+    def explain_model_shap(self, model, X, feature_names=None, max_display=20, plot_type="summary"):
+        """
+        Compute and visualize SHAP values for a model.
+
+        Parameters
+        ----------
+        model : estimator
+            Trained model.
+        X : pd.DataFrame or np.ndarray
+            Features to explain.
+        feature_names : list of str, optional
+            Feature names.
+        max_display : int
+            Max number of features to show.
+        plot_type : str
+            "summary" for summary plot, "bar" for bar plot, "force" for force plot (local).
+        
+        Returns
+        -------
+        shap_values : np.ndarray
+            SHAP values computed.
+        """
+        if not HAS_SHAP:
+            raise ImportError("SHAP not installed. Run: pip install shap")
+
+        if isinstance(X, pd.DataFrame):
+            feature_names = feature_names or X.columns.tolist()
+        else:
+            feature_names = feature_names or [f"f{i}" for i in range(X.shape[1])]
+
+        explainer = shap.Explainer(model, X)
+        shap_values = explainer(X, check_additivity=False)
+
+        if plot_type == "summary":
+            shap.summary_plot(shap_values, X, feature_names=feature_names, max_display=max_display)
+        elif plot_type == "bar":
+            shap.plots.bar(shap_values, max_display=max_display)
+        else:
+            raise ValueError("plot_type must be 'summary', 'bar', or 'force'")
+
+        return shap_values
+
+    def shap_dependence_plot(self, model, X, feature, feature_names=None, shap_values=None):
+        """
+        Generate a SHAP dependence plot for a single feature.
+
+        Parameters
+        ----------
+        model : estimator
+            Trained model.
+        X : pd.DataFrame or np.ndarray
+            Dataset to explain.
+        feature : str
+            Feature name to plot.
+        feature_names : list of str, optional
+            List of feature names if X is ndarray.
+        shap_values : np.ndarray, optional
+            Precomputed SHAP values (optional, can reuse if already computed).
+
+        Returns
+        -------
+        None (displays the plot)
+        """
+        if not HAS_SHAP:
+            raise ImportError("SHAP not installed. Run: pip install shap")
+
+        if isinstance(X, pd.DataFrame):
+            feature_names = feature_names or X.columns.tolist()
+        else:
+            feature_names = feature_names or [f"f{i}" for i in range(X.shape[1])]
+
+        # Compute SHAP values if not provided
+        if shap_values is None:
+            explainer = shap.Explainer(model, X)
+            shap_values = explainer(X)
+
+        shap.dependence_plot(feature, shap_values.values, X, feature_names=feature_names)
+
+    
+    def compare_models(self, X_test, y_test, task="regression"):
+        """
+        Evaluate all trained models and rank them by key metrics.
+
+        Parameters
+        ----------
+        X_test : pd.DataFrame or np.ndarray
+            Test features.
+        y_test : pd.Series or np.ndarray
+            True target values.
+        task : str
+            "regression" or "classification".
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of models with evaluation metrics sorted by performance.
+        """
+        results = []
+
+        for name, model in self.models.items():
+            y_pred = model.predict(X_test)
+
+            if task == "classification":
+                if hasattr(model, "predict_proba"):
+                    y_pred_prob = model.predict_proba(X_test)
+                    if y_pred_prob.shape[1] > 1:  # multiclass
+                        y_pred = y_pred_prob.argmax(axis=1)
+                    else:  # binary
+                        y_pred = (y_pred_prob[:, 1] >= 0.5).astype(int)
+                # Handle floats for binary outputs
+                elif y_pred.dtype.kind in "fc":
+                    y_pred = (y_pred >= 0.5).astype(int)
+
+            if task == "regression":
+                metrics = self.evaluate_regression(y_test, y_pred)
+            else:
+                metrics = self.evaluate_classification(y_test, y_pred)
+
+            metrics["model"] = name
+            results.append(metrics)
+
+        # Sort by first metric: RMSE for regression (ascending), first metric for classification (descending)
+        sort_col = list(results[0].keys())[0]
+        ascending = task == "regression"
+        return pd.DataFrame(results).sort_values(by=sort_col, ascending=ascending)
