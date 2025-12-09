@@ -5,3 +5,5 @@ python-dotenv
 scipy
 scikit-learn
 seaborn
+xgboost
+shap
